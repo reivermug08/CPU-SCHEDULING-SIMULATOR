@@ -1,0 +1,430 @@
+import tkinter as tk
+from tkinter import messagebox, ttk
+
+class CPUScheduler:
+    def __init__(self):
+        self.window = tk.Tk()
+        self.window.title("CPU Scheduling Simulator Pro")
+        
+        screen_width = self.window.winfo_screenwidth()
+        screen_height = self.window.winfo_screenheight()
+        width = min(1200, int(screen_width * 0.9))
+        height = min(900, int(screen_height * 0.9))
+        self.window.geometry(f"{width}x{height}")
+        self.window.minsize(800, 600) # Lowered minimum size for better laptop support
+        self.window.config(bg="#1e1e2f")
+
+        self.process_entries = []
+        self.colors = ["#6c5ce7", "#00cec9", "#fdcb6e", "#ff7675", "#00b894", "#e84393", "#0984e3", "#e17055"]
+        
+        # Track schedule for dynamic resize
+        self.current_schedule = []
+        self.resize_timer = None
+
+        self.setup_ui()
+        self.window.bind("<Configure>", self.on_resize)
+
+    def setup_ui(self):
+        # 1. TOP SECTION (Header & Config)
+        header = tk.Frame(self.window, bg="#1e1e2f")
+        header.pack(side="top", fill="x", pady=5)
+        
+        tk.Label(
+            header, text="CPU Scheduling Simulator",
+            font=("Segoe UI", 20, "bold"), bg="#1e1e2f", fg="#ffffff"
+        ).pack()
+
+        config_frame = tk.Frame(self.window, bg="#2d2d44", padx=10, pady=10)
+        config_frame.pack(side="top", fill="x", padx=20, pady=5)
+        
+        # Center the config items
+        config_frame.grid_columnconfigure(0, weight=1)
+        config_frame.grid_columnconfigure(5, weight=1)
+
+        input_style = {"bg": "#3d3d5c", "fg": "white", "insertbackground": "white", "font": ("Arial", 11), "relief": "flat"}
+        
+        tk.Label(config_frame, text="Processes (1-50):", bg="#2d2d44", fg="#a2a2c2", font=("Arial", 10, "bold")).grid(row=0, column=1, padx=5, sticky="e")
+        self.num_p_entry = tk.Entry(config_frame, width=8, **input_style)
+        self.num_p_entry.insert(0, "4")
+        self.num_p_entry.grid(row=0, column=2, padx=10, ipady=4, sticky="w")
+
+        tk.Label(config_frame, text="Time Quantum (RR):", bg="#2d2d44", fg="#a2a2c2", font=("Arial", 10, "bold")).grid(row=0, column=3, padx=5, sticky="e")
+        self.quantum_entry = tk.Entry(config_frame, width=8, **input_style)
+        self.quantum_entry.insert(0, "2")
+        self.quantum_entry.grid(row=0, column=4, padx=10, ipady=4, sticky="w")
+
+        self.create_btn = tk.Button(
+            config_frame, text="Generate Input Table", command=self.create_fields, 
+            bg="#6c5ce7", fg="white", relief="flat", padx=15, pady=5, font=("Segoe UI", 10, "bold"), cursor="hand2"
+        )
+        self.create_btn.grid(row=0, column=5, padx=20, sticky="w")
+
+
+        # 2. BOTTOM SECTION (Packed Bottom-Up to PREVENT SQUISHING)
+        self.gantt_frame = tk.Frame(self.window, bg="#1e1e2f")
+        self.gantt_frame.pack(side="bottom", fill="x", padx=20, pady=(0, 10))
+        
+        tk.Label(self.gantt_frame, text="Execution Timeline (Gantt Chart)", bg="#1e1e2f", fg="white", font=("Segoe UI", 11, "bold")).pack(anchor="w", pady=(0, 2))
+        
+        self.gantt_canvas = tk.Canvas(self.gantt_frame, bg="#1e1e2f", height=120, highlightthickness=0)
+        self.gantt_h_scroll = ttk.Scrollbar(self.gantt_frame, orient="horizontal", command=self.gantt_canvas.xview)
+        self.gantt_canvas.configure(xscrollcommand=self.gantt_h_scroll.set)
+        
+        self.gantt_canvas.pack(fill="x")
+        self.gantt_h_scroll.pack(fill="x")
+
+        # Results Container
+        self.results_container = tk.LabelFrame(self.window, text=" Simulation Results ", bg="#2d2d44", fg="#00cec9", font=("Segoe UI", 10, "bold"), pady=5)
+        self.results_container.pack(side="bottom", fill="x", padx=20, pady=5)
+
+        style = ttk.Style()
+        style.theme_use("clam")
+        style.configure("Treeview", background="#3d3d5c", foreground="white", fieldbackground="#3d3d5c", borderwidth=0, font=("Consolas", 10))
+        style.configure("Treeview.Heading", background="#2d2d44", foreground="#00cec9", font=("Segoe UI", 10, "bold"), borderwidth=0)
+        style.map("Treeview", background=[('selected', '#6c5ce7')])
+
+        self.result_table = ttk.Treeview(self.results_container, columns=("PID", "AT", "BT", "FT", "TAT", "WT"), show="headings", height=3)
+        for col in ("PID", "AT", "BT", "FT", "TAT", "WT"):
+            self.result_table.heading(col, text=col)
+            # Make columns stretch dynamically
+            self.result_table.column(col, anchor="center", stretch=True, width=100)
+        self.result_table.pack(fill="x", padx=10, pady=5)
+
+        avg_frame = tk.Frame(self.results_container, bg="#2d2d44")
+        avg_frame.pack(fill="x", pady=5)
+        self.result_label_wt = tk.Label(avg_frame, text="Avg Waiting Time: -", bg="#2d2d44", fg="#fab1a0", font=("Segoe UI", 11, "bold"))
+        self.result_label_wt.pack(side="left", padx=20)
+        self.result_label_tat = tk.Label(avg_frame, text="Avg Turnaround Time: -", bg="#2d2d44", fg="#81ecec", font=("Segoe UI", 11, "bold"))
+        self.result_label_tat.pack(side="left", padx=20)
+
+        # Control Panel
+        self.control_frame = tk.Frame(self.window, bg="#1e1e2f")
+        self.control_frame.pack(side="bottom", fill="x", padx=20, pady=5)
+
+        # 3. MIDDLE SECTION (Takes all remaining space)
+        self.main_container = tk.Frame(self.window, bg="#1e1e2f")
+        self.main_container.pack(side="top", fill="both", expand=True, padx=20, pady=5)
+        
+        self.canvas = tk.Canvas(self.main_container, bg="#1e1e2f", highlightthickness=0)
+        self.v_scrollbar = ttk.Scrollbar(self.main_container, orient="vertical", command=self.canvas.yview)
+        
+        # Let process_frame fill the canvas horizontally
+        self.process_frame = tk.Frame(self.canvas, bg="#1e1e2f")
+        self.canvas_window = self.canvas.create_window((0, 0), window=self.process_frame, anchor="nw", width=self.canvas.winfo_width())
+
+        self.process_frame.bind("<Configure>", lambda e: self.canvas.configure(scrollregion=self.canvas.bbox("all")))
+        self.canvas.bind("<Configure>", lambda e: self.canvas.itemconfig(self.canvas_window, width=e.width))
+        self.canvas.configure(yscrollcommand=self.v_scrollbar.set)
+
+        self.canvas.pack(side="left", fill="both", expand=True)
+        self.v_scrollbar.pack(side="right", fill="y")
+        self.canvas.bind_all("<MouseWheel>", lambda e: self.canvas.yview_scroll(int(-1*(e.delta/120)), "units"))
+
+        self.create_fields()
+        self.run_fcfs()
+
+    def create_fields(self):
+        for widget in self.process_frame.winfo_children(): widget.destroy()
+        self.process_entries = []
+
+        try:
+            val = self.num_p_entry.get().strip()
+            n = int(val)
+            if n <= 0 or n > 50: raise ValueError
+        except ValueError:
+            messagebox.showerror("Error", "Number of processes must be an integer between 1 and 50")
+            return
+
+        headers = ["Process ID", "Arrival Time", "Burst Time", "Priority (Asc)"]
+        header_colors = ["#a2a2c2", "#fab1a0", "#81ecec", "#ffeaa7"]
+        
+        # Configure Grid Weights for fluid horizontal stretching
+        for col in range(4):
+            self.process_frame.grid_columnconfigure(col, weight=1)
+
+        for col, text in enumerate(headers):
+            tk.Label(self.process_frame, text=text, bg="#1e1e2f", fg=header_colors[col], 
+                     font=("Segoe UI", 11, "bold")).grid(row=0, column=col, padx=5, pady=10, sticky="ew")
+
+        for i in range(n):
+            tk.Label(self.process_frame, text=f"P{i+1}", bg="#1e1e2f", fg="white", font=("Consolas", 11, "bold")).grid(row=i+1, column=0, sticky="ew")
+            a_ent = tk.Entry(self.process_frame, justify="center", bg="#3d3d5c", fg="white", borderwidth=0, font=("Consolas", 10))
+            a_ent.insert(0, str(i * 2))
+            a_ent.grid(row=i+1, column=1, padx=20, pady=5, ipady=4, sticky="ew")
+            b_ent = tk.Entry(self.process_frame, justify="center", bg="#3d3d5c", fg="white", borderwidth=0, font=("Consolas", 10))
+            b_ent.insert(0, str(((i+1) * 3) % 7 + 1))
+            b_ent.grid(row=i+1, column=2, padx=20, pady=5, ipady=4, sticky="ew")
+            p_ent = tk.Entry(self.process_frame, justify="center", bg="#3d3d5c", fg="white", borderwidth=0, font=("Consolas", 10))
+            p_ent.insert(0, str(i+1))
+            p_ent.grid(row=i+1, column=3, padx=20, pady=5, ipady=4, sticky="ew")
+            self.process_entries.append({'id': f"P{i+1}", 'arrival': a_ent, 'burst': b_ent, 'priority': p_ent})
+
+        for widget in self.control_frame.winfo_children(): widget.destroy()
+        algos = [("Run FCFS", self.run_fcfs), ("Run SJF", self.run_sjf), 
+                 ("Run Priority", self.run_priority), ("Run Round Robin", self.run_rr),
+                 ("Run All Comparison", self.run_comparison)]
+        
+        # Make buttons stretch evenly
+        for i in range(len(algos)):
+            self.control_frame.grid_columnconfigure(i, weight=1)
+
+        for i, (name, cmd) in enumerate(algos):
+            btn_color = "#0984e3" if "Comparison" not in name else "#e17055"
+            tk.Button(
+                self.control_frame, text=name, command=cmd, 
+                bg=btn_color, fg="white", relief="flat", pady=8, font=("Segoe UI", 10, "bold"), cursor="hand2"
+            ).grid(row=0, column=i, padx=5, sticky="ew")
+
+    def on_resize(self, event):
+        """Throttled redraw to make Gantt Chart highly responsive without lag."""
+        if self.resize_timer:
+            self.window.after_cancel(self.resize_timer)
+        self.resize_timer = self.window.after(100, lambda: self.draw_gantt(self.current_schedule))
+
+    def clear_results(self):
+        for item in self.result_table.get_children():
+            self.result_table.delete(item)
+        self.result_label_wt.config(text="Avg Waiting Time: -")
+        self.result_label_tat.config(text="Avg Turnaround Time: -")
+        self.current_schedule = []
+        self.gantt_canvas.delete("all")
+        self.gantt_canvas.config(scrollregion=(0, 0, 1000, 120))
+
+    def get_data(self):
+        self.clear_results()
+        if not self.process_entries: return None
+        data = []
+        try:
+            for entry in self.process_entries:
+                at, bt, pr = int(entry['arrival'].get()), int(entry['burst'].get()), int(entry['priority'].get())
+                if at < 0 or bt <= 0 or pr < 0: raise ValueError
+                data.append({'id': entry['id'], 'at': at, 'bt': bt, 'pr': pr, 'rem': bt, 'ft': 0, 'tat': 0, 'wt': 0})
+            return data
+        except ValueError:
+            messagebox.showerror("Input Error", "All fields must be non-negative integers. Burst > 0.")
+            return None
+
+    def draw_gantt(self, schedule):
+        self.current_schedule = schedule
+        self.gantt_canvas.delete("all")
+        if not schedule:
+            self.gantt_canvas.create_text(300, 60, text="No schedule to display", fill="#a2a2c2", font=("Segoe UI", 12, "italic"))
+            return
+        
+        self.window.update_idletasks()
+        total_time = schedule[-1]['end']
+        padding = 40
+        y_offset = 20
+        row_height = 40
+        
+        # Get REAL dynamic width of the frame container
+        window_width = self.gantt_frame.winfo_width()
+        if window_width < 100: window_width = 800
+        
+        # Scale blocks to organically fill available horizontal space
+        available_width = window_width - (padding * 2)
+        scale = max(20, available_width / total_time if total_time > 0 else 20)
+        
+        chart_width = (total_time * scale) + (padding * 2)
+        self.gantt_canvas.config(scrollregion=(0, 0, chart_width, 120))
+
+        self.gantt_canvas.create_line(padding, y_offset + row_height + 15, chart_width - padding, y_offset + row_height + 15, fill="#4b4b6b", width=3)
+
+        unique_tasks = sorted(list(set(t['id'] for t in schedule if t['id'] != 'IDLE')))
+        color_map = {pid: self.colors[idx % len(self.colors)] for idx, pid in enumerate(unique_tasks)}
+        color_map['IDLE'] = '#2d2d44'
+
+        for i, task in enumerate(schedule):
+            x_start = padding + (task['start'] * scale)
+            x_end = padding + (task['end'] * scale)
+            color = color_map[task['id']]
+            
+            self.gantt_canvas.create_rectangle(x_start + 4, y_offset + 4, x_end + 4, y_offset + row_height + 4, fill="#12121d", outline="")
+            
+            is_idle = task['id'] == 'IDLE'
+            border_color = "#4b4b6b" if is_idle else "#ffffff"
+            dash_pattern = (4, 4) if is_idle else ()
+            
+            self.gantt_canvas.create_rectangle(x_start, y_offset, x_end, y_offset + row_height, fill=color, outline=border_color, width=2, dash=dash_pattern)
+            
+            text_color = "#8a8a8a" if is_idle else "white"
+            # Ensure text fits in small blocks (clip long names if heavily compressed)
+            display_text = task['id'] if (x_end - x_start) > 20 else "" 
+            if display_text:
+                self.gantt_canvas.create_text((x_start + x_end)/2, y_offset + (row_height/2), text=display_text, fill=text_color, font=("Segoe UI", 10, "bold"))
+            
+            self.gantt_canvas.create_line(x_start, y_offset + row_height + 15, x_start, y_offset + row_height + 25, fill="#a2a2c2", width=2)
+            self.gantt_canvas.create_text(x_start, y_offset + row_height + 35, text=str(task['start']), fill="#a2a2c2", font=("Consolas", 9, "bold"))
+            
+            if i == len(schedule) - 1:
+                self.gantt_canvas.create_line(x_end, y_offset + row_height + 15, x_end, y_offset + row_height + 25, fill="#a2a2c2", width=2)
+                self.gantt_canvas.create_text(x_end, y_offset + row_height + 35, text=str(task['end']), fill="#a2a2c2", font=("Consolas", 9, "bold"))
+
+    def display_results(self, schedule, process_data):
+        for item in self.result_table.get_children(): self.result_table.delete(item)
+        total_wt, total_tat, n = 0, 0, len(process_data)
+        sorted_data = sorted(process_data, key=lambda x: int(x['id'][1:]))
+        
+        for p in sorted_data:
+            self.result_table.insert("", "end", values=(p['id'], p['at'], p['bt'], p['ft'], p['tat'], p['wt']))
+            total_wt += p['wt']
+            total_tat += p['tat']
+            
+        avg_wt = total_wt/n if n > 0 else 0
+        avg_tat = total_tat/n if n > 0 else 0
+        self.result_label_wt.config(text=f"Average Waiting Time: {avg_wt:.2f} ms")
+        self.result_label_tat.config(text=f"Average Turnaround Time: {avg_tat:.2f} ms")
+        self.draw_gantt(schedule)
+        return avg_wt
+
+    # --- SCHEDULING ALGORITHMS ---
+    def run_fcfs(self, silent=False):
+        data = self.get_data() if not silent else [dict(p) for p in self.get_data_raw()]
+        if not data: return
+        data.sort(key=lambda x: x['at'])
+        schedule, curr_time = [], 0
+        for p in data:
+            if curr_time < p['at']:
+                schedule.append({'id': 'IDLE', 'start': curr_time, 'end': p['at']})
+                curr_time = p['at']
+            start = curr_time
+            curr_time += p['bt']
+            p['ft'] = curr_time
+            p['tat'] = p['ft'] - p['at']
+            p['wt'] = p['tat'] - p['bt']
+            schedule.append({'id': p['id'], 'start': start, 'end': curr_time})
+        if not silent: return self.display_results(schedule, data)
+        return sum(p['wt'] for p in data) / len(data)
+
+    def run_sjf(self, silent=False):
+        data = self.get_data() if not silent else [dict(p) for p in self.get_data_raw()]
+        if not data: return
+        n, schedule, curr_time, completed = len(data), [], 0, 0
+        visited = [False] * n
+
+        while completed < n:
+            idx, min_bt = -1, float('inf')
+            for i in range(n):
+                if data[i]['at'] <= curr_time and not visited[i]:
+                    if data[i]['bt'] < min_bt: min_bt, idx = data[i]['bt'], i
+                    elif data[i]['bt'] == min_bt and data[i]['at'] < data[idx]['at']: idx = i
+            
+            if idx == -1:
+                next_at = min(data[i]['at'] for i in range(n) if not visited[i])
+                schedule.append({'id': 'IDLE', 'start': curr_time, 'end': next_at})
+                curr_time = next_at
+                continue
+                
+            start = curr_time
+            curr_time += data[idx]['bt']
+            data[idx]['ft'], visited[idx] = curr_time, True
+            data[idx]['tat'] = data[idx]['ft'] - data[idx]['at']
+            data[idx]['wt'] = data[idx]['tat'] - data[idx]['bt']
+            completed += 1
+            schedule.append({'id': data[idx]['id'], 'start': start, 'end': curr_time})
+        if not silent: return self.display_results(schedule, data)
+        return sum(p['wt'] for p in data) / len(data)
+
+    def run_priority(self, silent=False):
+        data = self.get_data() if not silent else [dict(p) for p in self.get_data_raw()]
+        if not data: return
+        n, schedule, curr_time, completed = len(data), [], 0, 0
+        visited = [False] * n
+
+        while completed < n:
+            idx, low_prio = -1, float('inf')
+            for i in range(n):
+                if data[i]['at'] <= curr_time and not visited[i]:
+                    if data[i]['pr'] < low_prio: low_prio, idx = data[i]['pr'], i
+                    elif data[i]['pr'] == low_prio and data[i]['at'] < data[idx]['at']: idx = i
+            
+            if idx == -1:
+                next_at = min(data[i]['at'] for i in range(n) if not visited[i])
+                schedule.append({'id': 'IDLE', 'start': curr_time, 'end': next_at})
+                curr_time = next_at
+                continue
+
+            start = curr_time
+            curr_time += data[idx]['bt']
+            data[idx]['ft'], visited[idx] = curr_time, True
+            data[idx]['tat'] = data[idx]['ft'] - data[idx]['at']
+            data[idx]['wt'] = data[idx]['tat'] - data[idx]['bt']
+            completed += 1
+            schedule.append({'id': data[idx]['id'], 'start': start, 'end': curr_time})
+        if not silent: return self.display_results(schedule, data)
+        return sum(p['wt'] for p in data) / len(data)
+
+    def run_rr(self, silent=False):
+        data = self.get_data() if not silent else [dict(p) for p in self.get_data_raw()]
+        if not data: return
+        try:
+            q = int(self.quantum_entry.get())
+            if q <= 0: raise ValueError
+        except:
+            if not silent: messagebox.showerror("Error", "Quantum must be a positive integer")
+            return None
+
+        n = len(data)
+        data.sort(key=lambda x: x['at'])
+        queue, schedule, curr_time, completed = [], [], 0, 0
+        in_queue = [False] * n
+        
+        def push_arrived(t):
+            for i in range(n):
+                if data[i]['at'] <= t and data[i]['rem'] > 0 and not in_queue[i]:
+                    queue.append(i); in_queue[i] = True
+
+        while completed < n:
+            push_arrived(curr_time)
+            if not queue:
+                next_at = min(p['at'] for p in data if p['rem'] > 0)
+                schedule.append({'id': 'IDLE', 'start': curr_time, 'end': next_at})
+                curr_time = next_at
+                push_arrived(curr_time)
+                
+            idx = queue.pop(0)
+            in_queue[idx] = False
+            start = curr_time
+            exec_t = min(data[idx]['rem'], q)
+            curr_time += exec_t
+            data[idx]['rem'] -= exec_t
+            
+            for i in range(n):
+                if data[i]['at'] <= curr_time and data[i]['rem'] > 0 and not in_queue[i] and i != idx:
+                    queue.append(i); in_queue[i] = True
+            
+            schedule.append({'id': data[idx]['id'], 'start': start, 'end': curr_time})
+            
+            if data[idx]['rem'] > 0:
+                queue.append(idx); in_queue[idx] = True
+            else:
+                completed += 1
+                data[idx]['ft'] = curr_time
+                data[idx]['tat'] = data[idx]['ft'] - data[idx]['at']
+                data[idx]['wt'] = data[idx]['tat'] - data[idx]['bt']
+        if not silent: return self.display_results(schedule, data)
+        return sum(p['wt'] for p in data) / len(data)
+
+    def get_data_raw(self):
+        data = []
+        for entry in self.process_entries:
+            at, bt, pr = int(entry['arrival'].get()), int(entry['burst'].get()), int(entry['priority'].get())
+            data.append({'id': entry['id'], 'at': at, 'bt': bt, 'pr': pr, 'rem': bt})
+        return data
+
+    def run_comparison(self):
+        if not self.process_entries: return
+        try:
+            results = {"FCFS": self.run_fcfs(True), "SJF": self.run_sjf(True), "Priority": self.run_priority(True), "Round Robin": self.run_rr(True)}
+            results = {k: v for k, v in results.items() if v is not None}
+            if not results: return
+            best_algo = min(results, key=results.get)
+            comparison_text = "Average Waiting Time Comparison:\n" + "-"*35 + "\n"
+            for algo, val in results.items(): comparison_text += f"{algo:15}: {val:>6.2f} ms\n"
+            comparison_text += "\n" + "-"*35 + f"\nBest Performing: {best_algo}"
+            messagebox.showinfo("Algorithm Comparison", comparison_text)
+        except Exception as e: messagebox.showerror("Error", f"Failed: {str(e)}")
+
+if __name__ == "__main__":
+    app = CPUScheduler()
+    app.window.mainloop()
