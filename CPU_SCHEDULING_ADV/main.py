@@ -11,6 +11,7 @@ import matplotlib.patches as mpatches
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 import random
 
+
 from algorithms import fcfs, sjf, priority_algo, round_robin, compute_stats
 from advisor import smart_advisor
 from ui_components import card, metric_card, build_table_header, build_advisor_panel
@@ -22,8 +23,8 @@ BG_INPUT  = "#0f3460"
 ACCENT    = "#533483"
 ACCENT2   = "#e94560"
 TEXT_W    = "#eaeaea"
-TEXT_MUTED= "#8892a4"
-SUCCESS   = "#0d7377"
+TEXT_MUTED= "#9aa2b0"
+SUCCESS   = "#2E2C7A"
 
 PROC_COLORS = [
     "#7b5ea7", "#2d6a4f", "#c0392b", "#1a6985",
@@ -123,8 +124,157 @@ class CPUSchedulerApp:
         self._build_ui()
         self.root.after(100, self.scrollable_container.recalculate_layout)
 
+        # ─────────────────────────────────────────────────────────────────────────────
+        # TRIGGER FOR THE INTRO OVERLAY
+        # Remove or comment out the line below to disable the intro completely.
+        # ─────────────────────────────────────────────────────────────────────────────
+        self.root.after(150, self._start_intro_sequence)
+
     def _only_digits(self, char):
         return char.isdigit() or char == ""
+
+    # ─────────────────────────────────────────────────────────────────────────────
+    # ██████████████████████ START OF INTRO SEQUENCE FEATURE ██████████████████████
+    # ─────────────────────────────────────────────────────────────────────────────
+    def _start_intro_sequence(self):
+        """Simulates a professional hardware motherboard layout with realistic orthogonal data flows."""
+        # Deep charcoal industrial engineering palette setup
+        self.intro_overlay = tk.Frame(self.root, bg="#0f141c") 
+        self.intro_overlay.place(relx=0, rely=0, relwidth=1, relheight=1)
+        
+        # Micro-grid background layer canvas
+        self.ai_canvas = tk.Canvas(self.intro_overlay, bg="#0f141c", highlightthickness=0)
+        self.ai_canvas.pack(fill="both", expand=True)
+
+        self.loading_pct = 0
+        self.clock_cycle = 0
+        self.active_signals = [] # Tracks running wavefronts: {"points": [...], "progress": float}
+        
+        # Color matrix matching clean hardware schematics
+        self.sig_high = "#388bfd"  # Energized trace line
+        self.sig_low  = "#1e222a"  # Dormant background copper path
+
+        self._animate_digital_logic()
+
+    def _animate_digital_logic(self):
+        """Maintains clean, step-precise clock execution logic and signal wave propagation loops."""
+        if not hasattr(self, 'intro_overlay') or not self.intro_overlay.winfo_exists():
+            return
+
+        self.ai_canvas.delete("all")
+        
+        # Compute dynamic canvas scaling properties 
+        W = self.ai_canvas.winfo_width()
+        H = self.ai_canvas.winfo_height()
+        if W <= 10: W, H = 1200, 850
+        cx, cy = W // 2, H // 2
+
+        self.clock_cycle += 1
+
+        # ───  DRAW SUBTLE PCB SCHEMATIC GRID ────────────────────────────────
+        grid_space = 25
+        for x in range(0, W, grid_space):
+            self.ai_canvas.create_line(x, 0, x, H, fill="#141922", width=1)
+        for y in range(0, H, grid_space):
+            self.ai_canvas.create_line(0, y, W, y, fill="#141922", width=1)
+
+        # ───  DEFINED FIXED METRIC BUS COURIER TRACKS ───────────────────────
+        # Rigorous 90-degree data traces simulating parallel buses routing out of core pins
+        cpu_w = 45  # Keeps it as a standard, non-oversized square
+        
+        bus_routes = [
+            # Right Channels (Lane A & B)
+            [(cx + cpu_w, cy - 15), (cx + cpu_w + 120, cy - 15), (cx + cpu_w + 120, cy - 140), (W - 100, cy - 140)],
+            [(cx + cpu_w, cy + 15), (cx + cpu_w + 90, cy + 15), (cx + cpu_w + 90, cy + 140), (W - 100, cy + 140)],
+            # Left Channels (Lane A & B)
+            [(cx - cpu_w, cy - 15), (cx - cpu_w - 120, cy - 15), (cx - cpu_w - 120, cy - 140), (100, cy - 140)],
+            [(cx - cpu_w, cy + 15), (cx - cpu_w - 90, cy + 15), (cx - cpu_w - 90, cy + 140), (100, cy + 140)],
+            # Vertical Ground / Timing Channels
+            [(cx - 20, cy + cpu_w), (cx - 20, cy + cpu_w + 60), (cx - 160, cy + cpu_w + 60), (cx - 160, H - 120)],
+            [(cx + 20, cy + cpu_w), (cx + 20, cy + cpu_w + 60), (cx + 160, cy + cpu_w + 60), (cx + 160, H - 120)]
+        ]
+
+        # ───  CLOCK TICK TRIGGER GENERATOR ──────────────────────────────────
+        # Every 25 cycles, a new data execution packet leaves the CPU pins
+        if self.clock_cycle % 25 == 1 and self.loading_pct < 100:
+            for route in bus_routes:
+                self.active_signals.append({"points": route, "progress": 0.0})
+
+        # ───  RENDER STATIONARY BACKGROUND TRACES ───────────────────────────
+        for route in bus_routes:
+            for i in range(len(route) - 1):
+                self.ai_canvas.create_line(route[i][0], route[i][1], route[i+1][0], route[i+1][1], 
+                                            fill=self.sig_low, width=2)
+
+        # ───  COMPUTE & RENDER RUNNING WAVEFRONTS ───────────────────────────
+        updated_signals = []
+        for sig in self.active_signals:
+            sig["progress"] += 0.025  # Controlled, uniform data transfer velocity
+            if sig["progress"] <= 1.0:
+                pts = sig["points"]
+                total_segments = len(pts) - 1
+                
+                # Determine precise active segment index down the bus lane
+                seg_idx = min(int(sig["progress"] * total_segments), total_segments - 1)
+                seg_pct = (sig["progress"] * total_segments) - seg_idx
+                
+                # Trace back and light up everything from origin to current position
+                for j in range(seg_idx):
+                    self.ai_canvas.create_line(pts[j][0], pts[j][1], pts[j+1][0], pts[j+1][1], 
+                                                fill=self.sig_high, width=2)
+                
+                # Smoothly interpolate exact line location tip points
+                x1, y1 = pts[seg_idx]
+                x2, y2 = pts[seg_idx + 1]
+                curr_x = x1 + int((x2 - x1) * seg_pct)
+                curr_y = y1 + int((y2 - y1) * seg_pct)
+                
+                self.ai_canvas.create_line(x1, y1, curr_x, curr_y, fill=self.sig_high, width=2)
+                
+                # Micro square data pin node indicator right at the signal wavefront tip
+                self.ai_canvas.create_rectangle(curr_x - 2, curr_y - 2, curr_x + 2, curr_y + 2, 
+                                                fill="#ffffff", outline=self.sig_high, width=1)
+                updated_signals.append(sig)
+                
+        self.active_signals = updated_signals
+
+        # ───  DRAW THE CPU MODULE BLOCK ─────────────────────────────────────
+        # Crisp, ordinary square geometry
+        self.ai_canvas.create_rectangle(cx - cpu_w, cy - cpu_w, cx + cpu_w, cy + cpu_w, 
+                                        fill="#161b22", outline="#30363d", width=2)
+        # Clear, clean monospace font representation
+        self.ai_canvas.create_text(cx, cy, text="CPU", font=("Consolas", 11, "bold"), fill="#f0f6fc")
+
+        # ───  TRACK PROGRESS TELEMETRY OVERLAYS ─────────────────────────────
+        if self.loading_pct < 100:
+            self.loading_pct += 0.5
+            status_text = f"ANALYZING MEMORY BUS CHANNELS... {int(self.loading_pct)}%"
+        else:
+            status_text = "INSTRUCTION ENVIRONMENT READY."
+
+        self.ai_canvas.create_text(cx, cy + cpu_w + 30, text=status_text, 
+                                   font=("Consolas", 8, "bold"), fill="#8b949e", justify="center")
+
+        # ───  INTERACTIVE WORKLOAD LAUNCHER INTERACTION ─────────────────────
+        if self.loading_pct >= 100:
+            if not hasattr(self, 'start_btn'):
+                self.start_btn = tk.Button(self.intro_overlay, text="LAUNCH SIMULATION DASHBOARD", 
+                                           command=self._dismiss_intro, bg="#238636", fg="#ffffff", 
+                                           activebackground="#2ea043", activeforeground="#ffffff",
+                                           relief="flat", font=("Segoe UI", 9, "bold"), padx=18, pady=6, cursor="hand2")
+                self.start_btn.place(relx=0.5, rely=0.66, anchor="center")
+
+        # Run render sequence ticks at a steady 30 FPS (~33ms intervals)
+        self.playback_after_id = self.root.after(33, self._animate_digital_logic)
+
+    def _dismiss_intro(self):
+        """Safely tears down the splash frame vectors to bring forward the main cockpit view."""
+        if hasattr(self, 'intro_overlay') and self.intro_overlay.winfo_exists():
+            self.intro_overlay.destroy()
+            self._generate()
+    # ─────────────────────────────────────────────────────────────────────────────
+    # ███████████████████████ END OF INTRO SEQUENCE FEATURE ███████████████████████
+    # ─────────────────────────────────────────────────────────────────────────────
 
     def _build_ui(self):
         title_bar = tk.Frame(self.root, bg=ACCENT, pady=10)
